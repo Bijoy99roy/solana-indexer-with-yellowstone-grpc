@@ -3,6 +3,7 @@ import Client, {
   CommitmentLevel,
   SubscribeRequestFilterAccounts,
   SubscribeRequestFilterTransactions,
+  txEncode,
 } from "@triton-one/yellowstone-grpc";
 require("dotenv").config();
 import bs58 from "bs58";
@@ -25,6 +26,7 @@ async function startIndexer() {
     if (data.block) {
       if (data.block.transactions.length) {
         for (let i = 0; i < data.block.transactions.length - 1; i++) {
+          // Filter out non vote transactions
           if (!data.block.transactions[i].isVote) {
             console.log(
               "Signature",
@@ -38,10 +40,20 @@ async function startIndexer() {
               "HEADER",
               data.block.transactions[i].transaction.message.header
             );
-            console.log(
-              "ACCOUNT KEYS",
-              data.block.transactions[i].transaction.message.accountKeys[0]
-            );
+            for (
+              let j = 0;
+              j <
+              data.block.transactions[i].transaction.message.accountKeys.length;
+              j++
+            ) {
+              console.log(
+                "ACCOUNT KEYS",
+                bs58.encode(
+                  data.block.transactions[i].transaction.message.accountKeys[j]
+                )
+              );
+            }
+
             console.log(
               "INSTRUNCTIONS ACCOUNTS",
               bs58.encode(
@@ -57,6 +69,13 @@ async function startIndexer() {
               )
             );
             console.log("transaction", data.block.transactions[i]);
+            const tx = txEncode.encode(
+              data.block.transactions[i],
+              txEncode.encoding.Json,
+              255,
+              true
+            );
+            console.log(`tx: ${JSON.stringify(tx)}`);
           }
         }
       }
@@ -74,6 +93,32 @@ async function startIndexer() {
   //   };
 
   const request: SubscribeRequest = {
+    slots: {},
+    accounts: {},
+    transactions: {
+      alltxs: {
+        vote: false,
+        failed: false,
+        signature: undefined,
+        accountInclude: [],
+        accountExclude: [],
+        accountRequired: [],
+      },
+    },
+    blocks: {
+      blocks: {
+        includeTransactions: true,
+        includeAccounts: false,
+        accountInclude: [],
+      },
+    },
+    transactionsStatus: {},
+    entry: {},
+    blocksMeta: {},
+    accountsDataSlice: [],
+  };
+
+  const request_radium: SubscribeRequest = {
     slots: {},
     accounts: {},
     transactions: {
