@@ -5,9 +5,14 @@ import Client, {
   SubscribeRequestFilterTransactions,
   txEncode,
 } from "@triton-one/yellowstone-grpc";
+import msgpack from "msgpack-lite";
+
 require("dotenv").config();
 import bs58 from "bs58";
-console.log(process.env.YELLOWSTONE_GRPC_URL);
+import { redisClient } from "./redis/redis";
+import { redisConfig } from "./config/config";
+import { parseTransactions } from "./parsers/parseTransactions";
+
 const client = new Client(
   process.env.YELLOWSTONE_GRPC_URL!,
   undefined,
@@ -18,71 +23,17 @@ async function startIndexer() {
   const version = await client.getVersion(); // gets the version information
   console.log(version);
   const stream = await client.subscribe();
-  stream.on("data", (data) => {
+  stream.on("data", async (data) => {
     console.log("data", data);
     console.log(
       "-----------------------------------------------------------------------------------------------------"
     );
     if (data.block) {
-      if (data.block.transactions.length) {
-        for (let i = 0; i < data.block.transactions.length - 1; i++) {
-          // Filter out non vote transactions
-          if (!data.block.transactions[i].isVote) {
-            console.log(
-              "Signature",
-              bs58.encode(data.block.transactions[i].signature)
-            );
-            console.log(
-              "Trnasaction Signature",
-              bs58.encode(data.block.transactions[i].transaction.signatures[0])
-            );
-            console.log(
-              "HEADER",
-              data.block.transactions[i].transaction.message.header
-            );
-            for (
-              let j = 0;
-              j <
-              data.block.transactions[i].transaction.message.accountKeys.length;
-              j++
-            ) {
-              console.log(
-                "ACCOUNT KEYS",
-                bs58.encode(
-                  data.block.transactions[i].transaction.message.accountKeys[j]
-                )
-              );
-            }
-
-            console.log(
-              "INSTRUNCTIONS ACCOUNTS",
-              bs58.encode(
-                data.block.transactions[i].transaction.message.instructions[0]
-                  .accounts
-              )
-            );
-            console.log(
-              "INSTRUNCTIONS DATA",
-              bs58.encode(
-                data.block.transactions[i].transaction.message.instructions[0]
-                  .data
-              )
-            );
-            console.log("transaction", data.block.transactions[i]);
-            const tx = txEncode.encode(
-              data.block.transactions[i],
-              txEncode.encoding.Json,
-              255,
-              true
-            );
-            console.log(`tx: ${JSON.stringify(tx)}`);
-          }
-        }
-      }
+      console.log("Push");
+      const encoded = msgpack.encode(data);
+      console.log(encoded);
+      await redisClient.lPush(redisConfig.queueName, JSON.stringify(data));
     }
-    console.log(
-      "********************************************************************************************************"
-    );
   });
   stream.on("error", (err) => console.error("stream error:", err));
   //   const solendFilter: SubscribeRequestFilterTransactions = {
@@ -122,22 +73,13 @@ async function startIndexer() {
     slots: {},
     accounts: {},
     transactions: {
-      alltxs: {
-        vote: false,
-        failed: false,
-        signature: undefined,
-        accountInclude: [],
+      raydium: {
+        accountInclude: ["675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"],
         accountExclude: [],
         accountRequired: [],
       },
     },
-    blocks: {
-      blocks: {
-        includeTransactions: true,
-        includeAccounts: false,
-        accountInclude: [],
-      },
-    },
+    blocks: {},
     transactionsStatus: {},
     entry: {},
     blocksMeta: {},
